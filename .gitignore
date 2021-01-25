@@ -3,3 +3,4 @@ vendor/
 www/csv
 .idea
 .vscode
+config/main.ini
