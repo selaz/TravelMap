@@ -1,0 +1,32 @@
+{% extends "__clear.twig" %}
+
+{% block content %}
+	<div id="map" style="width:100%;height:100%;position:absolute;top:0;left:0;"></div>
+	<script>
+		mapboxgl.accessToken = 'pk.eyJ1Ijoib2RhbiIsImEiOiJja2Q1b3ZvaXgwZ2pmMndwaGNyOXllNGJ3In0.Kd7Go0My_LTnyiHbb-OJjA';
+		var map = new mapboxgl.Map({
+			container: 'map',
+			style: 'mapbox://styles/mapbox/outdoors-v11',
+			center: [{{ center|slice(0,2)|join(',') }}],
+			zoom: {{ center[2] }}
+		});
+
+		map.on('load', function() {
+			map.addSource('national-park', {
+				'type': 'geojson',
+				'data': 'http://l.selaz.org:8000/points'
+			});
+
+					map.addLayer({
+				'id': 'park-volcanoes',
+				'type': 'circle',
+				'source': 'national-park',
+			});
+		});		
+	</script>
+{% endblock %}
+
+{% block head %}
+	<script src='https://api.mapbox.com/mapbox-gl-js/v1.11.1/mapbox-gl.js'></script>
+	<link href='https://api.mapbox.com/mapbox-gl-js/v1.11.1/mapbox-gl.css' rel='stylesheet' />
+{% endblock %}

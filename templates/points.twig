@@ -1,0 +1,6 @@
+
+{% if func %} 
+    {{ func }}({{ data|raw }})
+{% else %}
+    {{ data|raw }}
+{% endif %}

@@ -1,0 +1,181 @@
+{% extends "__clear.twig" %}
+
+{% block content %}
+	<div id="map" style="width:100%;height:100%;position:absolute;top:0;left:0;"></div>
+	<div id="info" 
+	style="display:none;bottom:38px;position:fixed;left:8px;background-color: #fff;border: 1px solid #ddd;padding: 6px;border-radius: 3px;"></div>
+	<script type="text/javascript">
+		myMap = null;
+		ymaps.ready(init);
+		
+		function init(){
+			myMap = new ymaps.Map("map", {
+				center: [ {{ center|slice(0,2)|join(',') }} ],
+				zoom: {{ center[2] }},
+				controls: []
+			});
+
+			myMap.controls.remove('geolocationControl');
+			myMap.controls.add('routeButtonControl',{float: 'right',size: 'small', floatIndex: 100});
+			myMap.controls.add('typeSelector', {float: 'right',size: 'small', floatIndex: 200});
+			myMap.controls.add('trafficControl', {float: 'right',size: 'small', floatIndex: 300});
+			myMap.controls.add('searchControl', {float: 'right',size: 'small', floatIndex: 400});
+			myMap.controls.add('rulerControl');
+
+			// Получение мультимаршрута.
+			var control = myMap.controls.get('routeButtonControl');
+			var multiRoutePromise = control.routePanel.getRouteAsync();
+
+			multiRoutePromise.then(function(multiRoute) {
+				// Подписка на событие обновления мультимаршрута.
+				multiRoute.model.events.add('requestsuccess', function() {
+					// Получение ссылки на активный маршрут.
+					var activeRoute = multiRoute.getActiveRoute();
+					// Когда панель добавляется на карту, она
+					// создает маршрут с изначально пустой геометрией. 
+					// Только когда пользователь выберет начальную и конечную точки,
+					// маршрут будет перестроен с непустой геометрией.
+					// Поэтому для избежания ошибки нужно добавить проверку,
+					// что маршрут не пустой.
+					if (activeRoute) {
+						// Вывод информации об активном маршруте.
+						// console.log("Длина: " + activeRoute.properties.get("distance").text);
+						// console.log("Время прохождения: " + activeRoute.properties.get("duration").text);
+						$("#info").show().html(
+							"Расстояние: " + activeRoute.properties.get("distance").text
+							+ "<br>Время: " + activeRoute.properties.get("duration").text
+						);
+					} else {
+						$("#info").hide();
+					}
+				});
+			}, function (err) {
+			console.log(err); 
+			}); 
+			
+			
+			myMap.events.add(['boundschange', 'typechange', 'balloonclose'], setLocationHash);
+			//myMap.setBounds([[{{ bounds.min_lat }},{{ bounds.min_lon }}],[{{ bounds.max_lat }},{{ bounds.max_lon }}]],{checkZoomRange: true});
+{#			lastOpenedBalloon = false;#}
+	
+			objectManager = new ymaps.LoadingObjectManager('/points?bbox=%b');
+			
+			objectManager.objects.events.add(['balloonopen'], function (e) {
+                lastOpenedBalloon = e.get('target')._objectIdWithOpenBalloon;
+                setLocationHash();
+            });
+
+			myMap.geoObjects.add(objectManager);
+			
+
+			// Создадим 5 пунктов выпадающего списка.
+			var listBoxItems = ['{{ t|join("','")|raw }}']
+					.map(function (title) {
+						return new ymaps.control.ListBoxItem({
+							data: {
+								content: title
+							},
+							state: {
+								selected: true
+							}
+						})
+					}),
+				reducer = function (filters, filter) {
+					filters[filter.data.get('content')] = filter.isSelected();
+					return filters;
+				},
+				// Теперь создадим список, содержащий 5 пунктов.
+				listBoxControl = new ymaps.control.ListBox({
+					data: {
+						content: 'Категории',
+						title: 'Категории',
+						image: 'https://c.selaz.org/img/list.png'
+					},
+					items: listBoxItems,
+					state: {
+						// Признак, развернут ли список.
+						expanded: false,
+						filters: listBoxItems.reduce(reducer, {})
+					},
+					options: {
+						size: 'small'
+
+					}
+				});
+			myMap.controls.add(listBoxControl);
+
+			// Добавим отслеживание изменения признака, выбран ли пункт списка.
+			listBoxControl.events.add(['select', 'deselect'], function (e) {
+				var listBoxItem = e.get('target');
+				var filters = ymaps.util.extend({}, listBoxControl.state.get('filters'));
+				filters[listBoxItem.data.get('content')] = listBoxItem.isSelected();
+				listBoxControl.state.set('filters', filters);
+			});
+
+			var filterMonitor = new ymaps.Monitor(listBoxControl.state);
+			filterMonitor.add('filters', function (filters) {
+				// Применим фильтр.
+				objectManager.setFilter(getFilterFunction(filters));
+			});
+
+			function getFilterFunction(categories) {
+				return function (obj) {
+					var content = obj.properties.balloonType;
+					return categories[content]
+				}
+			}
+			
+			// Передача параметров, описывающих состояние карты,
+            // в адресную строку браузера.
+            function setLocationHash () {
+                var params = [
+                    'type=' + myMap.getType().split('#')[1],
+                    'center=' + myMap.getCenter(),
+                    'zoom=' + myMap.getZoom()
+                ];
+                if (myMap.balloon.isOpen()) {
+                    params.push('open=' + lastOpenedBalloon);
+                }
+                window.location.hash = params.join('&');
+            }
+			
+			// Получение значение параметра name из адресной строки
+            // браузера.
+            function getParam (name, location) {
+                location = location || window.location.hash;
+                var res = location.match(new RegExp('[#&]' + name + '=([^&]*)', 'i'));
+                return (res && res[1] ? res[1] : false);
+            }
+			
+			 // Установка состояния карты в соответствии с переданными в адресной строке
+            // браузера параметрами.
+            function setMapStateByHash () {
+                var hashType = getParam('type'),
+                    hashCenter = getParam('center'),
+                    hashZoom = getParam('zoom'),
+                    open = getParam('open');
+                if (hashType) {
+                    myMap.setType('yandex#' + hashType);
+                }
+                if (hashCenter) {
+                    myMap.setCenter(hashCenter.split(','));
+                }
+                if (hashZoom) {
+                    myMap.setZoom(hashZoom);
+                }
+                if (open) {
+                    objectManager.objects.balloon.open(open);
+				}
+            }
+			
+			setMapStateByHash();
+			
+		}
+	</script>
+{% endblock %}
+
+{% block head %}
+	<script src="https://code.jquery.com/jquery-3.5.1.min.js" integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0=" crossorigin="anonymous"></script>
+	<script src="https://api-maps.yandex.ru/2.1/?apikey={{ key }}&lang=ru_RU" type="text/javascript"></script>
+	<link rel="stylesheet" type="text/css" href="https://yastatic.net/bootstrap/3.3.4/css/bootstrap.min.css">
+{% endblock %}

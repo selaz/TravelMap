@@ -1,0 +1,13 @@
+localhost:
+- route: /
+  defaults:
+    controller: Selaz\Controllers\Travel
+    action: index
+- route: /points
+  defaults:
+    controller: Selaz\Controllers\Travel
+    action: points
+- route: /export
+  defaults:
+    controller: Selaz\Controllers\Travel
+    action: export
