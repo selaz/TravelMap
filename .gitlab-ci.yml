@@ -21,8 +21,8 @@ deploy:
     - server
   stage: deploy
   script:
-    - rm /var/www/root
-    - ln -s /var/www/sources/$CI_PIPELINE_ID /var/www/root
+    - rm /var/www/travel
+    - ln -s /var/www/sources/$CI_PIPELINE_ID /var/www/travel
     - ln -s /var/www/img /var/www/root/www/img
     - sudo service php7.4-fpm restart
     - sudo /usr/sbin/nginx -t
