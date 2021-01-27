@@ -23,7 +23,7 @@ deploy:
   script:
     - rm /var/www/travel
     - ln -s /var/www/sources/$CI_PIPELINE_ID /var/www/travel
-    - ln -s /var/www/img /var/www/root/www/img
+    - ln -s /var/www/img /var/www/travel/www/img
     - sudo service php7.4-fpm restart
     - sudo /usr/sbin/nginx -t
     - sudo /usr/sbin/nginx -s reload
