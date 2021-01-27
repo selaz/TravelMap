@@ -14,7 +14,7 @@ build:
       - mkdir -p /var/www/sources/$CI_PIPELINE_ID/templates/cache/
       - chmod 777 /var/www/sources/$CI_PIPELINE_ID/templates/cache/
   only:
-    - master
+    - main
 
 deploy:
   tags: 
@@ -29,4 +29,4 @@ deploy:
     - sudo /usr/sbin/nginx -s reload
     - sudo rm -rf `ls -trd /var/www/sources/* |head  -n -20`
   only:
-    - master
+    - main
