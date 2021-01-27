@@ -1,4 +1,4 @@
-localhost:
+c.selaz.org:
 - route: /
   defaults:
     controller: Selaz\Controllers\Travel
