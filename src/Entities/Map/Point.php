@@ -2,8 +2,7 @@
 
 namespace Selaz\Entities\Map;
 
-use SafeMySQL,
-	Selaz\Tools\Config;
+use Selaz\Tools\Database;
 
 class Point {
 	protected $coords;
@@ -24,13 +23,8 @@ class Point {
 		'name', 'coords', 'link', 'image', 'description', 'type'
 	];
 
-	public function __construct(?SafeMySQL $db = null) {
-		if (empty($db)) {
-			$c = Config::load('mysql.ini');
-			$this->db = new SafeMySQL($c->get('travel',null));
-		} else {
-			$this->db = $db;
-		}
+	public function __construct() {
+		$this->db = Database::getInstance();
 	}
 	
 	public function getCoords(bool $reverse = false): array {
@@ -123,45 +117,25 @@ class Point {
 			return false;
 		}
 		
-		$result = $this->db->query(
+		return $this->db->insert(
 			"insert into points (message,name,link,image,type,coords,created,description) "
-			. "values (?s,?s,?s,?s,?i,point(?s,?s),now(),?s) on duplicate key update "
-			. "name=?s,link=?s,image=?s,type=?i,description=?s;",
-			$this->getId(),
-			$this->getName(),
-			json_encode($this->getLinks()),
-			$this->getImage(),
-			$this->getType(),
-			floatval($this->coords[0]),
-			floatval($this->coords[1]),
-			$this->getDesc(),
-			$this->getName(),
-			json_encode($this->getLinks()),
-			$this->getImage(),
-			$this->getType(),
-			$this->getDesc()
+			. "values (:message,:name,:link,:image,:type,point(:lon,:lat),now(),:desc) on duplicate key update "
+			. "name=:name,link=:link,image=:image,type=:type,description=:desc;",
+			[
+				'message' => $this->getId(),
+				'name' => $this->getName(),
+				'link' => json_encode($this->getLinks()),
+				'image' => $this->getImage(),
+				'type' => $this->getType(),
+				'lon' => floatval($this->coords[0]),
+				'lat' => floatval($this->coords[1]),
+				'desc' => $this->getDesc(),
+			]
 		);
-		
-		return ($result) ? $this->db->insertId() : false;
 	}
 	
 	public function update() {
-		if (empty($this->getId())) {
-			return false;
-		}
-		
-		$vars = get_object_vars($this);
-		
-		$update = array_filter(array_intersect_key($vars, array_flip(self::updatable)));
-		
-		$result = $this->db->query("update points set ?u where message = ?s;",$update, $this->getId());
-		
-		if ($result) {
-			return $this->db->affectedRows();
-		} else {
-			return false;
-		}
-		
+
 	}
 	
 	public function getBallonBody() {

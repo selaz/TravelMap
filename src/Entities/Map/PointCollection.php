@@ -4,6 +4,7 @@ namespace Selaz\Entities\Map;
 
 use SafeMySQL;
 use Selaz\Tools\Config;
+use Selaz\Tools\Database;
 
 class PointCollection {
 	
@@ -12,12 +13,11 @@ class PointCollection {
 	private $db;
 
 	public function __construct() {
-		$c = Config::load('main.ini');
-		$this->db = new SafeMySQL($c->getBlock('mysql'));
+		$this->db = Database::getInstance();
 	}
 	
 	private function loadPoint( array $data ) {
-		$p = new Point($this->db);
+		$p = new Point();
 		
 		$p->setColor($data['color']);
 		$p->setCoords([floatval($data['lat']), floatval($data['lon'])]);
@@ -34,22 +34,24 @@ class PointCollection {
 	}
 	
 	public function wherePolygon(array $points) {
-		$this->where .= sprintf(" and ST_CONTAINS(ST_GEOMFROMTEXT('POLYGON((%s))'),coords) ", implode(',', $points));
+		$this->where .= $this->db->parse(
+			" and ST_CONTAINS(ST_GEOMFROMTEXT(:cc),coords) ", 
+			['cc'=>sprintf('POLYGON((%s))',implode(',', $points))]
+		);
 	}
 
 	public function whereId(string $id) {
-		$this->where .= sprintf(" and p.message = '%s' ", $id);
+		$this->where .= $this->db->parse(" and p.message = ':mess' ", ['mess' => $id]);
 	}
 
 	public function whereType(?int $id) {
-		$this->where .= sprintf(" and p.type = %d ", $id);
+		$this->where .= $this->db->parse(" and p.type = :id ", ['id' => $id]);
 	}
 	
 	public function load() {
-		$sql = $this->db->parse("select p.message as id,p.name,p.link,p.image,t.icon,t.color,st_x(coords) as lat,st_y(coords) as lon,p.description,t.name as type_name,p.type "
-			. "from points p left join point_types t on p.type = t.id where 1 ?p;",
-			$this->where
-		);
+		$sql = sprintf("select p.message as id,p.name,p.link,p.image,t.icon,t.color,
+		st_x(coords) as lat,st_y(coords) as lon,p.description,t.name as type_name,p.type 
+		from points p left join point_types t on p.type = t.id where 1 %s;", $this->where);
 
 		$data = $this->db->getAll($sql);
 		

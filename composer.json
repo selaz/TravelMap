@@ -2,11 +2,11 @@
     "name": "selaz/smart-garage",
     "description": "Garage automation scripts",
     "require": {
-		"php": ">=7.2",
-        "symfony/routing": "^5.0",
-        "twig/twig": "^3.0",
-        "symfony/http-foundation": "^5.0",
-        "colshrapnel/safemysql": "^1.1"
+		"php": ">=8.1",
+        "symfony/routing": "^6.2",
+        "twig/twig": "^3.5",
+        "monolog/monolog": "~3.2",
+        "symfony/http-foundation": "^6.2"
     },
 	"autoload": {
 		"psr-4": {

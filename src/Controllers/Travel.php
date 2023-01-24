@@ -13,6 +13,7 @@ use SafeMySQL,
 	Selaz\Telegram\Entity\Message,
 	Selaz\Telegram\Entity\Update,
 	Selaz\Tools\Config;
+use Selaz\Tools\Database;
 use SimpleXMLElement;
 use XMLWriter;
 
@@ -36,15 +37,12 @@ class Travel extends Controller {
 	const IMG_PATH = '/var/www/img/';
 	const REGEX_COORDS = '~([^\d]*((\d{1,3}\.\d{3,}),\s*(\d{1,3}\.\d{3,}))[^\d]*)~s';
 	
-	private $config;
-
 	public function __construct() {
 		$this->setTitle('План путешествия');
-		$this->config = Config::load('main.ini');
 	}
 	
 	public function index() {
-		$db = new SafeMySQL($this->config->getBlock('mysql'));
+		$db = Database::getInstance();
 		
 		$this->setTemplate('yandex.twig');
 		$this->setTemplateData('center', [45.135923600045686,51.583865736593374,5]);
@@ -55,7 +53,6 @@ class Travel extends Controller {
 			'bounds', 
 			$db->getRow("select min(st_x(coords)) as min_lat,min(st_y(coords)) as min_lon,max(st_x(coords)) as max_lat,max(st_y(coords)) as max_lon from points;")
 		);
-		$this->setTemplateData('key',$this->config->get('key','maps'));
 	}
 	
 	public function getPolygon( array $coords ) { //@todo private
@@ -220,169 +217,4 @@ class Travel extends Controller {
 		$this->setTemplate('points.twig');
 		$this->addHeader('Content-type','application/json');
 	}
-
-	public function processCommand(Update $update) {
-		
-		if (empty($update->getMessage()) && empty($update->getCallbackQuery())) {
-			return;
-		}
-		
-		if ($callback = $update->getCallbackQuery()) {
-			$origId = $callback->getMessage()->getReplyToMessage()->getMessageId();
-			$origChatId = $callback->getMessage()->getReplyToMessage()->getChat()->getId();
-			$type = $callback->getData();
-			$this->setPointType(sprintf("%d:%d",$origChatId,$origId), $type);
-			
-			$pc = new PointCollection();
-			$pc->whereId(sprintf("%d:%d",$origChatId,$origId));
-			$pc->load();
-			
-			$p = $pc->getNext();
-			
-			$this->tg->editMessageText(
-				$update->getCallbackQuery()->getMessage()->getChat(),
-				$update->getCallbackQuery()->getMessage(),
-				sprintf(
-					"%s\nВыбран тип %s\n[Точка на карте](%s)", 
-					$update->getCallbackQuery()->getMessage()->getText(),
-					$this->pointTypes[$type],
-					sprintf('https://c.selaz.org/#type=map&center=%s&zoom=17&open=%s',implode(',',$p->getCoords()),$p->getId())
-				),
-				null,
-				'Markdown'
-			);
-		} elseif ( $reply = $update->getMessage()->getReplyToMessage() ) {
-			$this->chechUpdate($update->getMessage(),$reply);
-		} else {
-			$this->checkInsert($update->getMessage());
-		}
-	}
-	
-	public function setPointType(string $id, int $type) {
-		$p = new Point();
-		$p->setId($id);
-		$p->setType($type);
-		$p->update();
-	}
-	
-	private function parseCoords(Message $message): ?Location {
-		$loc = $m = null;
-		
-		if (preg_match(self::REGEX_COORDS, $message->getText() ?? $message->getCaption(),$m)) {
-			$loc = new Location([
-				'latitude' => $m[3],
-				'longitude' => $m[4],
-			]);
-		}
-		
-		return $loc;
-	}
-	
-	private function parseImage(Message $message): ?string {
-		$img = null;
-		
-		if ($message->hasPhoto()) {
-			$fid = $message->getPhoto(0)->getFileId();
-			$file = $this->tg->downloadFile($this->tg->getFile($fid));
-
-			$file->move(sprintf('%s%s', self::IMG_PATH, sprintf('%s.jpg',$fid)));
-			$img = sprintf('https://c.selaz.org/img/%s.jpg', $fid);
-		}
-		
-		return $img;
-	}
-	
-	private function parseLinks(Message $message) {
-		$links = [];
-		$text = $message->getText() ?? $message->getCaption();
-		if ($enl = $message->getEntities()) {
-			foreach ($enl as $en) {
-				if (!empty($en->getUrl())) {
-					$links[] = $en->getUrl();
-				} elseif ($en->getType() == 'url') {
-					$links[] = mb_substr($text, $en->getOffset(), $en->getLength());
-				}
-			}
-		}
-		
-		return $links;
-	}
-	
-	private function parseText(Message $message, Point $point, ?string $default = null) {
-		$m = $remove = [];
-		$text = $message->getText() ?? $message->getCaption() ?? $default;
-		
-		if (empty($text)) {
-			return [null,null];
-		}
-		
-		preg_match(self::REGEX_COORDS, $text ,$m);
-		
-		if (!empty($m[2])) {
-			$remove[] = $m[2];
-		}
-		$remove = array_merge($point->getLinks(), $remove);
-		
-		foreach ( $remove as $s ) {
-			$text = str_replace($s, '', $text);
-		}
-		
-		$text = preg_replace('~[\s]{2,}~s', ' ', $text);
-		$text = preg_replace('~\s+\n~', "\n", $text);
-		$text = trim($text);
-		$texts = explode("\n", $text, 2);
-		
-		if (count($texts) == 1) {
-			$texts[] = null;
-		}
-		
-		return $texts;
-	}
-
-	public function checkInsert(Message $message) {
-		$loc = $message->getLocation() ?? $this->parseCoords($message);
-		
-		if (!empty($loc)) {
-			$point = new Point();
-			$pointId = sprintf("%d:%d",$message->getChat()->getId(),$message->getMessageId());
-			$point->setId($pointId);
-			$point->setCoords([$loc->getLatitude(),$loc->getLongitude()]);
-			$point->setImage($this->parseImage($message));
-			
-			$urls = $this->parseLinks($message);
-			$point->setLinks($urls);
-			
-			$t = $this->parseText($message, $point, 'Нет описания');
-			$point->setName($t[0]);
-			$point->setDesc($t[1]);
-			
-			$keyboard = new InlineKeyboardMarkup();
-			
-			foreach ( $this->pointTypes as $tid => $tname) {
-				$keyboard->addButton(new InlineKeyboardButton(['text' => $tname,'callback_data'=> $tid]));	
-			}
-			
-			$point->save();
-			
-			$this->tg->sendMessage($message->getChat(), 'Укажите категорию точки', $message, $keyboard);
-		}
-	}
-
-	protected function chechUpdate(Message $update, Message $orig) {
-		$point = new Point();
-		$pointId = sprintf("%d:%d",$orig->getChat()->getId(),$orig->getMessageId());
-		$point->setId($pointId);
-		
-		$point->setImage($this->parseImage($update));
-		$point->setLinks($this->parseLinks($update));
-		$t = $this->parseText($update, $point, null);
-		$point->setName($t[0]);
-		$point->setDesc($t[1]);
-		
-		if ($point->update()) {
-			$this->tg->sendMessage($update->getChat(), 'Данные успешно обновлены', $update);
-		}
-	}
-
-
 } 

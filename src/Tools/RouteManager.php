@@ -2,10 +2,9 @@
 
 namespace Selaz\Tools;
 
-use Exception,
-	Symfony\Component\Routing\RequestContext,
-	Symfony\Component\Routing\Route,
-	Symfony\Component\Routing\RouteCollection;
+use Exception;
+use Symfony\Component\Routing\Route;
+use Symfony\Component\Routing\RouteCollection;
 
 /**
  * Получение конфига маршрутов, на основе хоста. В конфиге мы явно указываем какой домен к какому классу маршрутов относится,
@@ -18,15 +17,9 @@ class RouteManager {
 	 */
 	private $routes;
 	
-	public function __construct(RequestContext $requestContext) {
-		try {
-			$this->routes = new RouteCollection();
-			$config = Config::load('main.ini');
-			
-			$this->loadRoutes($config->get('host','web') ?? $requestContext->getHost());
-		} catch ( \Exception $e ) {
-			throw new Exception( sprintf( 'Что-то пошло не так с маршрутизацией: %s', $e->getMessage() ) );
-		}
+	public function __construct() {
+		$this->routes = new RouteCollection();
+		$this->loadRoutes();
 	}
 
 	/**
@@ -39,11 +32,10 @@ class RouteManager {
 	}
 	
 	
-	public function loadRoutes(string $host) {
+	public function loadRoutes() {
+		$c = yaml_parse_file(sprintf('%s/routes.yml',Env::getInstance()->getResourcePath()));
 		
-		$c = Config::load('routes.yml');
-		
-		foreach ( $c->getBlock($host) ?? [] as $route) {
+		foreach ( $c['routes'] ?? [] as $route) {
 			$hash = md5(json_encode([$route]));
 			$route = new Route($route['route'], $route['defaults'], $route['requirements'] ?? [], $route['options'] ?? [] );
 			
